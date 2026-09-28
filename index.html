@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>EMRAN HACKER - Camera Link</title>
+
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial;
+            text-align: center;
+            background: #000;
+            color: #00ff00;
+            padding: 25px;
+        }
+
+        button {
+            padding: 12px 25px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        input {
+            width: 90%;
+            padding: 10px;
+            margin: 10px;
+        }
+
+        video {
+            width: 90%;
+            max-width: 700px;
+            background: #111;
+            margin-top: 20px;
+        }
+
+        #phoneMode {
+            display: none;
+        }
+
+        #status {
+            margin: 20px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- PC MODE -->
+    <div id="pcMode">
+
+        <h1>EMRAN HACKER</h1>
+
+        <h2>PC MODE</h2>
+
+        <button onclick="createRoom()">
+            Create Link
+        </button>
+
+        <div id="status">
+            PC এখন প্রস্তুত নয়।
+        </div>
+
+        <div id="linkBox"></div>
+
+        <video id="remoteVideo" autoplay playsinline></video>
+
+    </div>
+
+
+    <!-- PHONE MODE -->
+    <div id="phoneMode">
+
+        <h1>EMRAN HACKER</h1>
+
+        <h2>PHONE MODE</h2>
+
+        <p>Camera চালু করতে নিচের বাটনে চাপ দাও।</p>
+
+        <button onclick="startPhone()">
+            Allow Camera
+        </button>
+
+        <div id="phoneStatus">
+            Camera বন্ধ আছে।
+        </div>
+
+        <video id="localVideo" autoplay playsinline muted></video>
+
+    </div>
+
+
+<script>
+
+let peer;
+
+
+// ============================
+// PC MODE
+// ============================
+
+function createRoom() {
+
+    document.getElementById("status").innerText =
+        "PC connection তৈরি হচ্ছে...";
+
+    peer = new Peer();
+
+    peer.on("open", function(id) {
+
+        const link =
+            window.location.origin +
+            window.location.pathname +
+            "?phone=" +
+            encodeURIComponent(id);
+
+        document.getElementById("linkBox").innerHTML =
+
+            "<p>এই Link-টি তোমার নিজের ২য় ফোনে খুলো:</p>" +
+
+            "<input id='myLink' value='" +
+            link +
+            "' readonly>" +
+
+            "<br>" +
+
+            "<button onclick='copyLink()'>Copy Link</button>";
+
+        document.getElementById("status").innerText =
+            "PC Ready — ফোনের জন্য অপেক্ষা করছে...";
+
+    });
+
+
+    // Phone থেকে call এলে
+    peer.on("call", function(call) {
+
+        document.getElementById("status").innerText =
+            "Phone connected — video আসছে...";
+
+        // Phone-এর video গ্রহণ
+        call.answer();
+
+
+        call.on("stream", function(stream) {
+
+            const video =
+                document.getElementById("remoteVideo");
+
+            video.srcObject = stream;
+
+            video.play().catch(function() {});
+
+            document.getElementById("status").innerText =
+                "Connected ✓";
+
+        });
+
+
+        call.on("error", function(error) {
+
+            document.getElementById("status").innerText =
+                "Call Error: " + error.message;
+
+        });
+
+    });
+
+
+    peer.on("error", function(error) {
+
+        document.getElementById("status").innerText =
+            "Connection Error: " + error.type;
+
+    });
+
+}
+
+
+// ============================
+// COPY LINK
+// ============================
+
+function copyLink() {
+
+    const input =
+        document.getElementById("myLink");
+
+    input.select();
+
+    navigator.clipboard.writeText(input.value);
+
+    alert("Link copied!");
+
+}
+
+
+// ============================
+// PHONE MODE
+// ============================
+
+async function startPhone() {
+
+    const params =
+        new URLSearchParams(window.location.search);
+
+    const pcId =
+        params.get("phone");
+
+
+    if (!pcId) {
+
+        alert("PC-এর তৈরি করা Link দিয়ে এই page খুলতে হবে।");
+
+        return;
+
+    }
+
+
+    document.getElementById("phoneStatus").innerText =
+        " permission চাওয়া হচ্ছে...";
+
+
+    try {
+
+        // Camera permission
+        const stream =
+            await navigator.mediaDevices.getUserMedia({
+
+                video: true,
+                audio: false
+
+            });
+
+
+        // নিজের ফোনে video দেখাবে
+        const video =
+            document.getElementById("localVideo");
+
+        video.srcObject = stream;
+
+        video.play().catch(function() {});
+
+
+        document.getElementById("phoneStatus").innerText =
+            "Camera চালু হয়েছে। PC-এর সাথে connection হচ্ছে...";
+
+
+        // নতুন Peer তৈরি
+        peer = new Peer();
+
+
+        peer.on("open", function() {
+
+            // PC-তে camera stream পাঠানো
+            const call =
+                peer.call(pcId, stream);
+
+
+            call.on("stream", function() {
+
+                document.getElementById("phoneStatus").innerText =
+                    "PC-এর সাথে Connected ✓";
+
+            });
+
+
+            call.on("close", function() {
+
+                stream.getTracks().forEach(function(track) {
+
+                    track.stop();
+
+                });
+
+            });
+
+
+            call.on("error", function(error) {
+
+                document.getElementById("phoneStatus").innerText =
+                    "Call Error: " + error.message;
+
+            });
+
+        });
+
+
+        peer.on("error", function(error) {
+
+            document.getElementById("phoneStatus").innerText =
+                "Connection Error: " + error.type;
+
+        });
+
+
+    }
+
+    catch(error) {
+
+        document.getElementById("phoneStatus").innerText =
+            " চালু করা যায়নি।";
+
+        alert(
+            " permission দিতে হবে।"
+        );
+
+    }
+
+}
+
+
+// ============================
+// PAGE LOAD
+// ============================
+
+window.onload = function() {
+
+    const params =
+        new URLSearchParams(window.location.search);
+
+
+    if (params.get("phone")) {
+
+        document.getElementById("pcMode").style.display =
+            "none";
+
+        document.getElementById("phoneMode").style.display =
+            "block";
+
+    }
+
+};
+
+</script>
+
+</body>
+</html>
